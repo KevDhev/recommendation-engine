@@ -120,55 +120,61 @@ class DatabaseManager:
         csv path: path to the CSV file with the item data
         """
 
-        # Check if the CSV file exists
+        # Check if the CSV file exists and has data.
+        create_sample_data = False
+
         if not os.path.exists(csv_path):
             print(f"CSV file not found: {csv_path}")
+            create_sample_data = True
+        else:
+        
+            try:
+                # Read the CSV file
+                df = pd.read_csv(csv_path)
+                print(f"Reading data from: {csv_path}")
+                print(f"Found {len(df)} records")
+
+                # Check if CSV has data (not just headers)
+                if len(df) == 0:
+                    print("CSV file is empty, creating sample data...")
+                    create_sample_data = True
+                else:
+                    cursor = self._get_cursor()
+                    items_inserted = 0
+
+                    for _, row in df.iterrows():
+                        try:
+                            title = row.get("title", row.get("name", 'Untitled'))
+                            genre = row.get("genre", row.get("genres", 'Unknown'))
+                            year = row.get("year", row.get("release_year", None))
+                            description = row.get("description", row.get("synopsis", ''))
+
+                            cursor.execute(
+                                "INSERT OR IGNORE INTO items (title, genre, year, description) VALUES (?, ?, ?, ?)", (title, genre, year, description)
+                            )
+
+                            items_inserted += 1
+                        except Exception as e:
+                            print(f"Error inserting item: {e}")
+                            continue
+                    
+                    if self._safe_commit():
+                        print(f"Inserted {items_inserted} items into the database")
+                    else:
+                        print("Error inserting data - commit failed")
+                        return
+                    
+                    # Create sample users and ratings
+                    self._create_sample_users()
+                    self._create_sample_ratings
+            except Exception as e:
+                print(f"Error reading CSV file: {e}")
+                create_sample_data = True
+        
+        # Create sample data if CSV doesn't exist or is empty
+        if create_sample_data:
             print("Creating sample data...")
             self._create_sample_data()
-            return
-        
-        try:
-            # Read the CSV file
-            df = pd.read_csv(csv_path)
-            print(f"Reading data from: {csv_path}")
-            print(f"Found {len(df)} records")
-
-            cursor = self._get_cursor()
-
-            # Insert data into the items table
-            items_inserted = 0
-
-            for _, row in df.iterrows():
-                try:
-                    # Make sure the columns exist in the CSV
-                    # Adaptar según la estructura de tu CSV
-                    title = row.get("title", row.get("name", 'Untitled'))
-                    genre = row.get("genre", row.get("genres", 'Unknown'))
-                    year = row.get("year", row.get("release_year", None))
-                    description = row.get("description", row.get("synopsis", ''))
-
-                    cursor.execute(
-                        "INSERT OR IGNORE INTO items (title, genre, year, description) VALUES (?, ?, ?, ?)", (title, genre, year, description)
-                    )
-
-                    items_inserted += 1
-                except Exception as e:
-                    print(f"Error inserting item: {e}")
-                    continue
-            
-            if self._safe_commit():
-                print(f"Inserted {items_inserted} items into the database")
-            else:
-                print("Error inserting data - commit failed")
-                return
-
-            # Create a sample user
-            self._create_sample_users()
-
-            # Create sample ratings
-            self._create_sample_ratings()
-        except Exception as e:
-            print(f"Error inserting initial data: {e}")
         
     def _create_sample_users(self):
         """Create some sample users"""
@@ -182,7 +188,7 @@ class DatabaseManager:
             cursor = self._get_cursor()
 
             for user in sample_users:
-                cursor.execute("INSERT OR IGNORE INTO users (name) VALUES (?)", (user))
+                cursor.execute("INSERT OR IGNORE INTO users (name) VALUES (?)", (user,))
         
             if self._safe_commit():
                 print("Example users created")
